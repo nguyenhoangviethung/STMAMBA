@@ -1,0 +1,14 @@
+torch>=2.1.0
+torchvision
+pytorch-lightning>=2.0.0
+transformers
+h5py
+pandas
+numpy
+einops
+scipy
+tokenizers
+accelerate
+# research-specific (may require private repos/builds)
+mamba-ssm
+causal-conv1d

@@ -1,0 +1,9 @@
+## Model configuration for NExT-ST-Mamba
+model:
+  name: next_st_mamba
+  dtype: bfloat16
+  hidden_size: 1024
+  num_layers: 12
+  dropout: 0.1
+  bert_model: bert-base-uncased
+  reasoning_model: qwen-1.5b

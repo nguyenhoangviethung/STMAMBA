@@ -1,0 +1,10 @@
+## Data configuration for NExT-QA
+data:
+  name: nextqa
+  train_csv: datasets/nextqa/train.csv
+  val_csv: datasets/nextqa/val.csv
+  map_vid_file: datasets/nextqa/map_vid_vidorID.json
+  feat_h5_train: datasets/vid_feat/app_mot_train.h5
+  feat_h5_val: datasets/vid_feat/app_mot_val.h5
+  batch_size: 8
+  num_workers: 4

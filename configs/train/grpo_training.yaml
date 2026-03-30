@@ -1,0 +1,14 @@
+## Training configuration for GRPO-based training
+train:
+  epochs: 20
+  optimizer: adamw
+  lr: 1e-4
+  weight_decay: 0.01
+  grad_clip: 1.0
+  precision: bf16
+  batch_accumulate: 1
+
+grpo:
+  enabled: true
+  clip_ratio: 0.2
+  reward_scale: 1.0
