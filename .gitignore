@@ -3,5 +3,7 @@ __pycache__/
 .pytest_cache/
 venv/
 .env
-datasets/
-/datasets/
+datasets/nextqa
+/datasets/nextqa
+datasets/vid_feat
+/datasets/vid_feat
