@@ -57,8 +57,9 @@ class NextSTMamba(nn.Module):
         self.input_proj = nn.Linear(input_feat_dim, hidden_dim)
         self.st_graph = STGraph(hidden_dim, num_heads=n_heads)
         self.pruner = ShaRPPruner(hidden_dim, keep_ratio=keep_ratio)
+        # MambaLayer expects SSM-specific params; map generic args where sensible
         self.mamba_layers = nn.ModuleList([
-            MambaLayer(hidden_dim, n_heads=n_heads, mlp_dim=mlp_dim, use_checkpoint=use_checkpoint)
+            MambaLayer(dim=hidden_dim, use_checkpoint=use_checkpoint)
             for _ in range(num_mamba_layers)
         ])
 
