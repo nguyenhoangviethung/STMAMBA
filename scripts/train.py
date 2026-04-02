@@ -6,10 +6,46 @@ SLM reasoners; pass `--load-reasoner` to enable (requires large downloads).
 """
 import argparse
 import os
+import torch
 import pytorch_lightning as pl
+from torch.nn.utils.rnn import pad_sequence
 
 from data.dataloader import NextQADataModule
 from training.lightning_module import NextSTLightning
+
+# --- HÀM XỬ LÝ PADDING ĐỂ SỬA LỖI RESIZE STORAGE ---
+def nextqa_collate_fn(batch):
+    questions = [item["question"] for item in batch]
+    chunks = [item["chunks"] for item in batch]
+    
+    # Pad temporal dimension (chiều thời gian) bằng 0 để các tensor bằng nhau
+    padded_chunks = pad_sequence(chunks, batch_first=True)
+    
+    out = {
+        "question": questions,
+        "chunks": padded_chunks
+    }
+    
+    if "label" in batch[0] and batch[0]["label"] is not None:
+        labels = [item["label"] for item in batch]
+        out["label"] = torch.tensor(labels, dtype=torch.long)
+        
+    return out
+
+# --- BỌC DATAMODULE LẠI ĐỂ INJECT HÀM COLLATE ---
+class SafeNextQADataModule(NextQADataModule):
+    def train_dataloader(self):
+        dl = super().train_dataloader()
+        dl.collate_fn = nextqa_collate_fn
+        return dl
+
+    def val_dataloader(self):
+        dl = super().val_dataloader()
+        if isinstance(dl, list):
+            for d in dl: d.collate_fn = nextqa_collate_fn
+        else:
+            dl.collate_fn = nextqa_collate_fn
+        return dl
 
 
 def parse_args():
@@ -30,7 +66,9 @@ def parse_args():
 
 def main():
     args = parse_args()
-    dm = NextQADataModule(
+    
+    # Sử dụng module đã được vá lỗi
+    dm = SafeNextQADataModule(
         train_csv=args.train_csv,
         val_csv=args.val_csv,
         feat_h5_train=args.feat_h5_train,
@@ -44,7 +82,11 @@ def main():
 
     model = NextSTLightning(model=None, hidden_dim=1024, num_labels=5, lr=1e-4)
 
-    trainer = pl.Trainer(max_epochs=args.epochs, devices=args.gpus if args.gpus > 0 else None, accelerator="gpu" if args.gpus > 0 else None)
+    trainer = pl.Trainer(
+        max_epochs=args.epochs, 
+        devices=args.gpus if args.gpus > 0 else None, 
+        accelerator="gpu" if args.gpus > 0 else None
+    )
     trainer.fit(model, datamodule=dm)
 
     os.makedirs(os.path.dirname(args.save_path) or ".", exist_ok=True)
