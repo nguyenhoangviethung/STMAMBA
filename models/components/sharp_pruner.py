@@ -4,7 +4,7 @@ Implements a lightweight learned scorer to rank visual tokens and
 keep only the top-K per sample. Returns pruned tokens and indices
 so the caller can maintain mapping for attention keys/values.
 """
-from typing import Tuple
+from typing import Tuple, Optional
 import torch
 import torch.nn as nn
 
