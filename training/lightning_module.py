@@ -1,5 +1,5 @@
+#training/lightning_module.py
 """PyTorch Lightning module wrapping NextSTMamba and GRPO training.
-
 This LightningModule trains a small classifier head on top of the fused
 visual+text representations produced by `NextSTMamba`. It uses a GRPO
 surrogate (implemented in `training/grpo_trainer.py`) to reweight
@@ -21,15 +21,29 @@ class NextSTLightning(pl.LightningModule):
 
     Args:
         model: optional pre-built NextSTMamba model; if None a default is built.
+        input_feat_dim: dimension of input visual features (added to fix shape error).
         hidden_dim: dimension of model pooled vectors (used to size classifier).
         num_labels: number of labels for classification head (if dataset uses labels).
         lr: learning rate.
     """
 
-    def __init__(self, model: Optional[NextSTMamba] = None, hidden_dim: int = 1024, num_labels: int = 5, lr: float = 1e-4):
+    def __init__(
+        self, 
+        model: Optional[NextSTMamba] = None, 
+        input_feat_dim: int = 1024, # <--- Thêm tham số input_feat_dim vào
+        hidden_dim: int = 1024, 
+        num_labels: int = 5, 
+        lr: float = 1e-4
+    ):
         super().__init__()
         self.save_hyperparameters()
-        self.model = model if model is not None else NextSTMamba(hidden_dim=hidden_dim, load_reasoner=False)
+        
+        # VÁ LỖI SHAPE: Truyền input_feat_dim xuống NextSTMamba
+        self.model = model if model is not None else NextSTMamba(
+            input_feat_dim=input_feat_dim, # <--- Truyền tham số này
+            hidden_dim=hidden_dim, 
+            load_reasoner=False
+        )
         self.classifier = nn.Linear(hidden_dim * 2, num_labels)
         self.criterion = nn.CrossEntropyLoss(reduction="none")
         self.grpo = GRPO(clip_ratio=0.2)

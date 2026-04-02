@@ -80,7 +80,14 @@ def main():
 
     dm.setup()
 
-    model = NextSTLightning(model=None, hidden_dim=1024, num_labels=5, lr=1e-4)
+    # VÁ LỖI SHAPE: Truyền input_feat_dim=64 để khớp với feature shape (80x64)
+    model = NextSTLightning(
+        model=None, 
+        input_feat_dim=64, # <--- Fix ở đây
+        hidden_dim=1024, 
+        num_labels=5, 
+        lr=1e-4
+    )
 
     trainer = pl.Trainer(
         max_epochs=args.epochs, 
