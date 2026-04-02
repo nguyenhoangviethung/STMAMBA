@@ -1,8 +1,8 @@
-
+# data/nextqa_dataset.py
 """NextQA dataset implementation using HDF5-backed features.
 
-This dataset opens the HDF5 feature file lazily (once per worker) to
-avoid repeated open/close in `__getitem__`. It supports mapping between
+This dataset opens the HDF5 feature file lazily inside __getitem__ to
+avoid multiprocessing issues with h5py objects. It supports mapping between
 CSV `video_id` and HDF5 keys via `map_vid_file` and creates ActionChunks
 using `transforms.make_action_chunks`. Frame shuffling and chunk masking
 are applied during training for anti-shortcut robustness.
@@ -18,7 +18,7 @@ from .transforms import make_action_chunks, frame_shuffle
 import random
 
 
-class NextQADataset:
+class NextQADataset(torch.utils.data.Dataset): # Đảm bảo kế thừa từ Dataset
     """HDF5-backed dataset for NExT-QA.
 
     Args:
@@ -62,17 +62,8 @@ class NextQADataset:
             with open(map_vid_file, "r", encoding="utf-8") as f:
                 self.map = json.load(f)
 
-        # h5 file handle (opened lazily per worker)
-        self.h5: Optional[h5py.File] = None
-
     def __len__(self) -> int:
         return len(self.df)
-
-    def _ensure_h5(self):
-        """Open HDF5 file if not already opened (worker-safe lazy open)."""
-        if self.h5 is None:
-            # open in read-only mode
-            self.h5 = h5py.File(self.h5_path, "r")
 
     def _get_h5_key(self, video_id: str) -> str:
         if self.map is not None:
@@ -80,12 +71,13 @@ class NextQADataset:
         return str(video_id)
 
     def _load_features_for_video(self, key: str) -> np.ndarray:
-        self._ensure_h5()
-        if key not in self.h5:
-            raise KeyError(f"Video key {key} not found in HDF5 file")
-        arr = self.h5[key]
-        # read to memory (small per-video arrays); caller will chunk further
-        data = np.array(arr)
+        # VÁ LỖI MUTIPROCESSING: Mở và đóng file h5 cục bộ bên trong getitem
+        # Điều này an toàn 100% với num_workers > 0
+        with h5py.File(self.h5_path, "r") as h5_file:
+            if key not in h5_file:
+                raise KeyError(f"Video key {key} not found in HDF5 file")
+            arr = h5_file[key]
+            data = np.array(arr)
         return data
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
@@ -146,10 +138,3 @@ class NextQADataset:
             "choices": choices,
             "label": label,
         }
-
-    def __del__(self):
-        try:
-            if self.h5 is not None:
-                self.h5.close()
-        except Exception:
-            pass
