@@ -22,7 +22,7 @@ class QwenReasoner(nn.Module):
         device: optional device string (e.g., 'cuda' or 'cpu').
     """
 
-    def __init__(self, model_name: str = "facebook/opt-125m", device: Optional[str] = None) -> None:
+    def __init__(self, model_name: str = "Qwen/Qwen2.5-1.5B-Instruct", device: Optional[str] = None) -> None:        
         super().__init__()
         self.model_name = model_name
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
