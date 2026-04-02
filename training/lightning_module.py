@@ -1,5 +1,5 @@
-#training/lightning_module.py
 """PyTorch Lightning module wrapping NextSTMamba and GRPO training.
+
 This LightningModule trains a small classifier head on top of the fused
 visual+text representations produced by `NextSTMamba`. It uses a GRPO
 surrogate (implemented in `training/grpo_trainer.py`) to reweight
@@ -74,6 +74,10 @@ class NextSTLightning(pl.LightningModule):
 
         # classifier input: concat visual + text pooled vectors
         feat = torch.cat([visual_repr, text_repr], dim=1)
+        
+        # VÁ LỖI DTYPE: Đồng bộ kiểu dữ liệu của feat với trọng số của classifier
+        feat = feat.to(self.classifier.weight.dtype)
+        
         logits = self.classifier(feat)
 
         # extract label (if present) else create dummy zeros
