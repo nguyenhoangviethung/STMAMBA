@@ -15,20 +15,12 @@ import numpy as np
 import torch
 from .transforms import make_action_chunks, frame_shuffle
 import random
+import logging
 
+logger = logging.getLogger(__name__)
 
 class NextQADataset(torch.utils.data.Dataset):
-    """HDF5-backed dataset for NExT-QA.
-
-    Args:
-        csv_path: path to CSV with fields including `video` and `question`.
-        h5_path: path to HDF5 file containing per-video features.
-        map_vid_file: optional JSON mapping from CSV video_id -> HDF5 key.
-        chunk_size: frames per ActionChunk.
-        stride: sliding stride for chunking.
-        shuffle_prob: probability to shuffle frames inside chunks (train-only).
-        mask_prob: probability to mask an ActionChunk (train-only).
-    """
+    """HDF5-backed dataset for NExT-QA."""
 
     def __init__(
         self,
@@ -54,55 +46,65 @@ class NextQADataset(torch.utils.data.Dataset):
         self.stride = int(stride)
         self.shuffle_prob = float(shuffle_prob)
         self.mask_prob = float(mask_prob)
+        self.missing_keys_logged = 0
 
-        # mapping from csv video_id to h5 key
-        self.map: Optional[Dict[str, str]] = None
-        if map_vid_file and os.path.exists(map_vid_file):
-            with open(map_vid_file, "r", encoding="utf-8") as f:
-                self.map = json.load(f)
+        # VÁ LỖI CẤU TRÚC HDF5: Đọc mảng 'ids' một lần vào RAM để làm từ điển tra cứu (Tra cứu index)
+        self.vid_to_idx = {}
+        self._build_vid_index()
+
+    def _build_vid_index(self):
+        try:
+            with h5py.File(self.h5_path, "r") as f:
+                if "ids" in f:
+                    ids_array = np.array(f["ids"])
+                    for idx, vid in enumerate(ids_array):
+                        self.vid_to_idx[str(vid)] = idx
+        except Exception as e:
+            logger.warning(f"Could not build video index from {self.h5_path}: {e}")
 
     def __len__(self) -> int:
         return len(self.df)
 
-    def _get_h5_key(self, video_id: str) -> str:
-        if self.map is not None:
-            return self.map.get(str(video_id), str(video_id))
-        return str(video_id)
-
-    def _load_features_for_video(self, key: str) -> Optional[np.ndarray]:
+    def _load_features_for_video(self, video_id: str) -> Optional[np.ndarray]:
+        # Kiểm tra xem video_id có trong từ điển tra cứu không
+        if video_id not in self.vid_to_idx:
+            if self.missing_keys_logged < 5:
+                print(f"WARNING: Video ID '{video_id}' not found in HDF5 'ids' array!")
+                self.missing_keys_logged += 1
+            return None
+            
+        idx = self.vid_to_idx[video_id]
         try:
             with h5py.File(self.h5_path, "r") as h5_file:
-                if key not in h5_file:
-                    return None
-                arr = h5_file[key]
-                data = np.array(arr)
+                # Trích xuất dòng feature tương ứng từ mảng 'feat'
+                data = np.array(h5_file["feat"][idx])
             return data
-        except Exception:
+        except Exception as e:
+            if self.missing_keys_logged < 5:
+                print(f"ERROR reading HDF5 for video '{video_id}': {e}")
+                self.missing_keys_logged += 1
             return None
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         row = self.df.iloc[idx]
         question = row.get("question", "")
         
-        # VÁ LỖI CỘT CSV: Tên cột ID video là 'video' chứ không phải 'video_id'
         video_id = str(row.get("video", "")).strip()
         if video_id.lower() == "nan":
             video_id = ""
 
-        # VÁ LỖI CỘT CSV: NExT-QA tách choices thành 5 cột a0, a1, a2, a3, a4
         choices = [row.get(f"a{i}", "") for i in range(5)]
-        
-        # VÁ LỖI CỘT CSV: Nhãn phân loại nằm ở cột 'answer'
         label = row.get("answer", None)
 
-        h5_key = self._get_h5_key(video_id)
-        feats = self._load_features_for_video(h5_key)
+        feats = self._load_features_for_video(video_id)
 
+        # Fallback khi không tìm thấy feature
         if feats is None:
             if self.is_train:
                 return self.__getitem__(random.randint(0, len(self) - 1))
             else:
-                feats = np.zeros((self.chunk_size, 1, 64), dtype=np.float32)
+                # Dựa vào log, feature dimension là 4096
+                feats = np.zeros((self.chunk_size, 1, 4096), dtype=np.float32)
 
         if feats.ndim == 2:
             T, F = feats.shape
@@ -110,7 +112,7 @@ class NextQADataset(torch.utils.data.Dataset):
         elif feats.ndim == 3:
             T, N, F = feats.shape
         else:
-            raise ValueError(f"Unsupported feature shape for video {h5_key}: {feats.shape}")
+            raise ValueError(f"Unsupported feature shape for video {video_id}: {feats.shape}")
 
         merged = feats.reshape(T * feats.shape[1], feats.shape[2])
 
@@ -137,7 +139,6 @@ class NextQADataset(torch.utils.data.Dataset):
         return {
             "question": question,
             "video_id": video_id,
-            "h5_key": h5_key,
             "chunks": chunks_tensor,
             "choices": choices,
             "label": label,

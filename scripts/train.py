@@ -32,7 +32,6 @@ def nextqa_collate_fn(batch):
         
     return out
 
-# --- BỌC DATAMODULE LẠI ĐỂ INJECT HÀM COLLATE ---
 class SafeNextQADataModule(NextQADataModule):
     def train_dataloader(self):
         dl = super().train_dataloader()
@@ -80,10 +79,9 @@ def main():
 
     dm.setup()
 
-    # VÁ LỖI SHAPE: Truyền input_feat_dim=64 để khớp với feature shape (80x64)
     model = NextSTLightning(
         model=None, 
-        input_feat_dim=64, # <--- Fix ở đây
+        input_feat_dim=4096, 
         hidden_dim=1024, 
         num_labels=5, 
         lr=1e-4

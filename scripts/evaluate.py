@@ -24,17 +24,13 @@ def parse_args():
 def main():
     args = parse_args()
     
-    # VÁ LỖI DEVICE: Tự động nhận diện GPU nếu có để tăng tốc evaluate
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Evaluating on {device}...")
 
-    # Load checkpoint. Vì chúng ta đã có self.save_hyperparameters() trong file train
-    # nên checkpoint này đã tự nhớ input_feat_dim=64 và text_dim=768.
     module = NextSTLightning.load_from_checkpoint(args.ckpt, map_location=device)
     module.eval()
     module.to(device)
 
-    # Sử dụng DataModule gốc (vì ta đã vá lỗi collate_fn trực tiếp trong data/dataloader.py)
     dm = NextQADataModule(
         train_csv="", 
         val_csv=args.val_csv, 
