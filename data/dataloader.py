@@ -14,7 +14,8 @@ def nextqa_collate_fn(batch):
     """
     questions = [item["question"] for item in batch]
     video_ids = [item["video_id"] for item in batch]
-    h5_keys = [item["h5_key"] for item in batch]
+    
+    # VÁ LỖI KEYERROR: Đã xóa phần trích xuất h5_key vì không còn dùng nữa
     choices = [item["choices"] for item in batch]
     
     # Extract the chunks and pad them
@@ -26,7 +27,6 @@ def nextqa_collate_fn(batch):
     out = {
         "question": questions,
         "video_id": video_ids,
-        "h5_key": h5_keys,
         "chunks": padded_chunks,
         "choices": choices
     }
@@ -83,7 +83,6 @@ class NextQADataModule(pl.LightningDataModule):
         self.val_dataset = None
 
     def setup(self, stage: Optional[str] = None) -> None:
-        # VÁ LỖI FILE NOT FOUND: Chỉ khởi tạo train_dataset nếu có đường dẫn hợp lệ
         if self.train_csv and self.feat_h5_train:
             self.train_dataset = NextQADataset(
                 self.train_csv,
@@ -96,7 +95,6 @@ class NextQADataModule(pl.LightningDataModule):
                 mask_prob=self.mask_prob,
             )
             
-        # Chỉ khởi tạo val_dataset nếu có đường dẫn hợp lệ
         if self.val_csv and self.feat_h5_val:
             self.val_dataset = NextQADataset(
                 self.val_csv,
