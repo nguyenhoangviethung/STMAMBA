@@ -23,6 +23,7 @@ class NextSTLightning(pl.LightningModule):
         model: optional pre-built NextSTMamba model; if None a default is built.
         input_feat_dim: dimension of input visual features (added to fix shape error).
         hidden_dim: dimension of model pooled vectors (used to size classifier).
+        text_dim: dimension of text encoder output (e.g., 768 for BERT).
         num_labels: number of labels for classification head (if dataset uses labels).
         lr: learning rate.
     """
@@ -30,21 +31,24 @@ class NextSTLightning(pl.LightningModule):
     def __init__(
         self, 
         model: Optional[NextSTMamba] = None, 
-        input_feat_dim: int = 1024, # <--- Thêm tham số input_feat_dim vào
+        input_feat_dim: int = 64, # Mặc định là 64 theo dataset của bạn
         hidden_dim: int = 1024, 
+        text_dim: int = 768, # <--- Thêm chiều của Text Encoder (BERT)
         num_labels: int = 5, 
         lr: float = 1e-4
     ):
         super().__init__()
         self.save_hyperparameters()
         
-        # VÁ LỖI SHAPE: Truyền input_feat_dim xuống NextSTMamba
+        # Truyền input_feat_dim xuống NextSTMamba
         self.model = model if model is not None else NextSTMamba(
-            input_feat_dim=input_feat_dim, # <--- Truyền tham số này
+            input_feat_dim=input_feat_dim,
             hidden_dim=hidden_dim, 
             load_reasoner=False
         )
-        self.classifier = nn.Linear(hidden_dim * 2, num_labels)
+        
+        # VÁ LỖI SHAPE (1792 vs 2048): Ghép chuẩn xác hidden_dim (1024) và text_dim (768)
+        self.classifier = nn.Linear(hidden_dim + text_dim, num_labels)
         self.criterion = nn.CrossEntropyLoss(reduction="none")
         self.grpo = GRPO(clip_ratio=0.2)
         self.lr = lr
