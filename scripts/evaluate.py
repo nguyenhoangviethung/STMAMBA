@@ -6,40 +6,10 @@ prints accuracy when `label` exists in the dataset.
 """
 import argparse
 import torch
-from torch.nn.utils.rnn import pad_sequence
 
 from training.lightning_module import NextSTLightning
 from data.dataloader import NextQADataModule
 from utils.metrics import accuracy
-
-# --- HÀM XỬ LÝ PADDING ĐỂ SỬA LỖI RESIZE STORAGE ---
-def nextqa_collate_fn(batch):
-    questions = [item["question"] for item in batch]
-    chunks = [item["chunks"] for item in batch]
-    
-    padded_chunks = pad_sequence(chunks, batch_first=True)
-    
-    out = {
-        "question": questions,
-        "chunks": padded_chunks
-    }
-    
-    if "label" in batch[0] and batch[0]["label"] is not None:
-        labels = [item["label"] for item in batch]
-        out["label"] = torch.tensor(labels, dtype=torch.long)
-        
-    return out
-
-# --- BỌC DATAMODULE LẠI ĐỂ INJECT HÀM COLLATE ---
-class SafeNextQADataModule(NextQADataModule):
-    def val_dataloader(self):
-        dl = super().val_dataloader()
-        if isinstance(dl, list):
-            for d in dl: d.collate_fn = nextqa_collate_fn
-        else:
-            dl.collate_fn = nextqa_collate_fn
-        return dl
-
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -53,11 +23,19 @@ def parse_args():
 
 def main():
     args = parse_args()
-    module = NextSTLightning.load_from_checkpoint(args.ckpt, map_location=torch.device("cpu"))
-    module.eval()
+    
+    # VÁ LỖI DEVICE: Tự động nhận diện GPU nếu có để tăng tốc evaluate
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Evaluating on {device}...")
 
-    # Sử dụng module đã được vá lỗi
-    dm = SafeNextQADataModule(
+    # Load checkpoint. Vì chúng ta đã có self.save_hyperparameters() trong file train
+    # nên checkpoint này đã tự nhớ input_feat_dim=64 và text_dim=768.
+    module = NextSTLightning.load_from_checkpoint(args.ckpt, map_location=device)
+    module.eval()
+    module.to(device)
+
+    # Sử dụng DataModule gốc (vì ta đã vá lỗi collate_fn trực tiếp trong data/dataloader.py)
+    dm = NextQADataModule(
         train_csv="", 
         val_csv=args.val_csv, 
         feat_h5_train="", 
@@ -71,8 +49,7 @@ def main():
     preds = []
     labels = []
     for batch in dl:
-        # Lấy trực tiếp từ logic gộp batch mới
-        texts = batch["question"]
+        texts = batch["question"] if isinstance(batch["question"], list) else [batch["question"]]
         chunks = batch["chunks"]
         
         if chunks.dim() == 3:
@@ -81,9 +58,16 @@ def main():
             B, K, C, F = chunks.shape
             visual_feats = chunks.view(B, K * C, 1, F)
 
+        # Chuyển visual_feats sang cùng device với model
+        visual_feats = visual_feats.to(device)
+
         with torch.no_grad():
             out = module.model(texts, visual_feats)
             feat = torch.cat([out["visual_repr"], out["text_repr"]], dim=1)
+            
+            # VÁ LỖI DTYPE: Đồng bộ kiểu dữ liệu trước khi đưa vào classifier
+            feat = feat.to(module.classifier.weight.dtype)
+            
             logits = module.classifier(feat)
             pred = torch.argmax(logits, dim=1).cpu().numpy().tolist()
             
@@ -96,7 +80,9 @@ def main():
 
     if labels:
         acc = accuracy(preds, labels)
-        print(f"Validation accuracy: {acc:.4f}")
+        print("==============================")
+        print(f"Validation Accuracy: {acc * 100:.2f}%")
+        print("==============================")
     else:
         print("No labels found in validation data; printed predictions:")
         print(preds[:20])
