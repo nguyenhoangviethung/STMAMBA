@@ -60,8 +60,8 @@ def parse_args():
     p.add_argument("--gpus", type=int, default=1)
     p.add_argument("--save-path", type=str, default="checkpoints/last.ckpt")
     p.add_argument("--load-reasoner", action="store_true")
-    p.add_argument("--limit_train-batches", type=int, default=None, help="Limit number of training batches (for debugging)")
-    p.add_argument("--limit_val-batches", type=int, default=None, help="Limit number of validation batches (for debugging)")
+    p.add_argument("--limit-train-batches", type=int, default=None, help="Limit number of training batches (for debugging)")
+    p.add_argument("--limit-val-batches", type=int, default=None, help="Limit number of validation batches (for debugging)")
     return p.parse_args()
 
 
