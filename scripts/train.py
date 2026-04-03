@@ -60,6 +60,8 @@ def parse_args():
     p.add_argument("--gpus", type=int, default=1)
     p.add_argument("--save-path", type=str, default="checkpoints/last.ckpt")
     p.add_argument("--load-reasoner", action="store_true")
+    p.add_argument("--limit_train-batches", type=int, default=None, help="Limit number of training batches (for debugging)")
+    p.add_argument("--limit_val-batches", type=int, default=None, help="Limit number of validation batches (for debugging)")
     return p.parse_args()
 
 
@@ -90,7 +92,10 @@ def main():
     trainer = pl.Trainer(
         max_epochs=args.epochs, 
         devices=args.gpus if args.gpus > 0 else None, 
-        accelerator="gpu" if args.gpus > 0 else None
+        accelerator="gpu" if args.gpus > 0 else None,
+        limit_train_batches=args.limit_train_batches,
+        limit_val_batches=args.limit_val_batches,
+        fast_dev_run = True
     )
     trainer.fit(model, datamodule=dm)
 
