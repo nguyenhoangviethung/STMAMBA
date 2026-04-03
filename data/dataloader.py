@@ -1,4 +1,3 @@
-# data/dataloader.py
 """PyTorch Lightning DataModule scaffold for NExT-QA."""
 from typing import Optional
 import pytorch_lightning as pl
@@ -80,43 +79,54 @@ class NextQADataModule(pl.LightningDataModule):
         self.stride = stride
         self.shuffle_prob = shuffle_prob
         self.mask_prob = mask_prob
+        self.train_dataset = None
+        self.val_dataset = None
 
     def setup(self, stage: Optional[str] = None) -> None:
-        self.train_dataset = NextQADataset(
-            self.train_csv,
-            self.feat_h5_train,
-            map_vid_file=self.map_vid_file,
-            is_train=True,
-            chunk_size=self.chunk_size,
-            stride=self.stride,
-            shuffle_prob=self.shuffle_prob,
-            mask_prob=self.mask_prob,
-        )
-        self.val_dataset = NextQADataset(
-            self.val_csv,
-            self.feat_h5_val,
-            map_vid_file=self.map_vid_file,
-            is_train=False,
-            chunk_size=self.chunk_size,
-            stride=self.stride,
-            shuffle_prob=0.0,
-            mask_prob=0.0,
-        )
+        # VÁ LỖI FILE NOT FOUND: Chỉ khởi tạo train_dataset nếu có đường dẫn hợp lệ
+        if self.train_csv and self.feat_h5_train:
+            self.train_dataset = NextQADataset(
+                self.train_csv,
+                self.feat_h5_train,
+                map_vid_file=self.map_vid_file,
+                is_train=True,
+                chunk_size=self.chunk_size,
+                stride=self.stride,
+                shuffle_prob=self.shuffle_prob,
+                mask_prob=self.mask_prob,
+            )
+            
+        # Chỉ khởi tạo val_dataset nếu có đường dẫn hợp lệ
+        if self.val_csv and self.feat_h5_val:
+            self.val_dataset = NextQADataset(
+                self.val_csv,
+                self.feat_h5_val,
+                map_vid_file=self.map_vid_file,
+                is_train=False,
+                chunk_size=self.chunk_size,
+                stride=self.stride,
+                shuffle_prob=0.0,
+                mask_prob=0.0,
+            )
 
     def train_dataloader(self) -> DataLoader:
+        if self.train_dataset is None:
+            raise ValueError("train_dataset is not initialized. Please provide valid paths for train_csv and feat_h5_train.")
         return DataLoader(
             self.train_dataset, 
             batch_size=self.batch_size, 
             shuffle=True, 
             num_workers=self.num_workers,
-            collate_fn=nextqa_collate_fn # VÁ LỖI: Thêm collate_fn
+            collate_fn=nextqa_collate_fn
         )
 
     def val_dataloader(self) -> DataLoader:
+        if self.val_dataset is None:
+            raise ValueError("val_dataset is not initialized. Please provide valid paths for val_csv and feat_h5_val.")
         return DataLoader(
             self.val_dataset, 
             batch_size=self.batch_size, 
             shuffle=False, 
             num_workers=self.num_workers,
-            collate_fn=nextqa_collate_fn # VÁ LỖI: Thêm collate_fn
+            collate_fn=nextqa_collate_fn
         )
