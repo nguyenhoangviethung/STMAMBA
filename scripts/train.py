@@ -62,6 +62,7 @@ def parse_args():
     p.add_argument("--load-reasoner", action="store_true")
     p.add_argument("--limit-train-batches", type=int, default=None, help="Limit number of training batches (for debugging)")
     p.add_argument("--limit-val-batches", type=int, default=None, help="Limit number of validation batches (for debugging)")
+    p.add_argument("--fast-dev-run", type=bool, default=False, help="Run a single batch for train/val to quickly check the pipeline")
     return p.parse_args()
 
 
@@ -95,7 +96,7 @@ def main():
         accelerator="gpu" if args.gpus > 0 else None,
         limit_train_batches=args.limit_train_batches,
         limit_val_batches=args.limit_val_batches,
-        fast_dev_run = True
+        fast_dev_run = args.fast_dev_run
     )
     trainer.fit(model, datamodule=dm)
 
