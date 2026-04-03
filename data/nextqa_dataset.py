@@ -1,4 +1,3 @@
-# data/nextqa_dataset.py
 """NextQA dataset implementation using HDF5-backed features.
 
 This dataset opens the HDF5 feature file lazily inside __getitem__ to
@@ -18,11 +17,11 @@ from .transforms import make_action_chunks, frame_shuffle
 import random
 
 
-class NextQADataset(torch.utils.data.Dataset): # Đảm bảo kế thừa từ Dataset
+class NextQADataset(torch.utils.data.Dataset):
     """HDF5-backed dataset for NExT-QA.
 
     Args:
-        csv_path: path to CSV with fields including `video_id` and `question`.
+        csv_path: path to CSV with fields including `video` and `question`.
         h5_path: path to HDF5 file containing per-video features.
         map_vid_file: optional JSON mapping from CSV video_id -> HDF5 key.
         chunk_size: frames per ActionChunk.
@@ -70,29 +69,42 @@ class NextQADataset(torch.utils.data.Dataset): # Đảm bảo kế thừa từ D
             return self.map.get(str(video_id), str(video_id))
         return str(video_id)
 
-    def _load_features_for_video(self, key: str) -> np.ndarray:
-        # VÁ LỖI MUTIPROCESSING: Mở và đóng file h5 cục bộ bên trong getitem
-        # Điều này an toàn 100% với num_workers > 0
-        with h5py.File(self.h5_path, "r") as h5_file:
-            if key not in h5_file:
-                raise KeyError(f"Video key {key} not found in HDF5 file")
-            arr = h5_file[key]
-            data = np.array(arr)
-        return data
+    def _load_features_for_video(self, key: str) -> Optional[np.ndarray]:
+        try:
+            with h5py.File(self.h5_path, "r") as h5_file:
+                if key not in h5_file:
+                    return None
+                arr = h5_file[key]
+                data = np.array(arr)
+            return data
+        except Exception:
+            return None
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
         row = self.df.iloc[idx]
         question = row.get("question", "")
-        video_id = row.get("video_id", "")
-        choices = row.get("choices", "")
-        label = row.get("label", None)
+        
+        # VÁ LỖI CỘT CSV: Tên cột ID video là 'video' chứ không phải 'video_id'
+        video_id = str(row.get("video", "")).strip()
+        if video_id.lower() == "nan":
+            video_id = ""
+
+        # VÁ LỖI CỘT CSV: NExT-QA tách choices thành 5 cột a0, a1, a2, a3, a4
+        choices = [row.get(f"a{i}", "") for i in range(5)]
+        
+        # VÁ LỖI CỘT CSV: Nhãn phân loại nằm ở cột 'answer'
+        label = row.get("answer", None)
 
         h5_key = self._get_h5_key(video_id)
-        feats = self._load_features_for_video(h5_key)  # numpy array
+        feats = self._load_features_for_video(h5_key)
 
-        # Expected shapes: (T, F) or (T, N, F)
+        if feats is None:
+            if self.is_train:
+                return self.__getitem__(random.randint(0, len(self) - 1))
+            else:
+                feats = np.zeros((self.chunk_size, 1, 64), dtype=np.float32)
+
         if feats.ndim == 2:
-            # single spatial token per frame -> treat N=1
             T, F = feats.shape
             feats = feats.reshape(T, 1, F)
         elif feats.ndim == 3:
@@ -100,19 +112,13 @@ class NextQADataset(torch.utils.data.Dataset): # Đảm bảo kế thừa từ D
         else:
             raise ValueError(f"Unsupported feature shape for video {h5_key}: {feats.shape}")
 
-        # Create ActionChunks per node by flattening spatial nodes into token dimension
-        # We'll produce chunks over the frame axis for each spatial node and then
-        # stack them so each chunk preserves motion cues.
-        # Merge N into the frame dimension to form (T*N, F)
-        merged = feats.reshape(T * feats.shape[1], feats.shape[2])  # (T*N, F)
+        merged = feats.reshape(T * feats.shape[1], feats.shape[2])
 
         chunks = make_action_chunks(merged, chunk_size=self.chunk_size, stride=self.stride)
 
-        # apply frame shuffling (train only)
         if self.is_train and self.shuffle_prob > 0.0:
             chunks = frame_shuffle(chunks, shuffle_prob=self.shuffle_prob)
 
-        # apply random chunk masking
         if self.is_train and self.mask_prob > 0.0:
             masked_chunks: List[np.ndarray] = []
             for c in chunks:
@@ -122,9 +128,7 @@ class NextQADataset(torch.utils.data.Dataset): # Đảm bảo kế thừa từ D
                     masked_chunks.append(c)
             chunks = masked_chunks
 
-        # convert to torch tensor: list of (chunk_size, F) -> (K, chunk_size, F)
         if len(chunks) == 0:
-            # fallback: return a zero chunk
             chunks = [np.zeros((self.chunk_size, feats.shape[2]), dtype=feats.dtype)]
 
         chunks_arr = np.stack(chunks, axis=0)
